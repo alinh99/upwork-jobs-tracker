@@ -3,3 +3,4 @@ requests
 undetected-chromedriver
 python-dotenv
 gspread
+curl-cffi
