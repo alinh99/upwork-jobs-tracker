@@ -1,18 +1,21 @@
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone, timedelta
 import logging
 import time
-import config
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone, timedelta
+
 from curl_cffi import requests
-from driver import get_authorization_header
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+import config
+from driver import get_authorization_header, smart_scroll_and_load
 
 
 def process_single_job(job):
-    """Worker task executed in parallel threads to format job data."""
+    """Worker task executed in parallel threads to format job data from GraphQL response."""
     ciphertext = job.get("ciphertext", "")
-    job_link = (
-        f"https://www.upwork.com/jobs/{ciphertext}" if ciphertext else "#"
-    )
+    job_link = f"https://www.upwork.com/jobs/{ciphertext}" if ciphertext else "#"
 
     skills_list = [
         attr.get("prettyName", "")
@@ -28,9 +31,7 @@ def process_single_job(job):
     if fixed_amount:
         budget_str = f"${fixed_amount}"
     elif hourly_obj.get("min") or hourly_obj.get("max"):
-        budget_str = (
-            f"${hourly_obj.get('min', 0)}-${hourly_obj.get('max', 0)}/hr"
-        )
+        budget_str = f"${hourly_obj.get('min', 0)}-${hourly_obj.get('max', 0)}/hr"
     else:
         budget_str = job.get("tierText", "N/A")
 
@@ -44,6 +45,84 @@ def process_single_job(job):
         "job_skills": skills_str,
     }
 
+def fetch_job_dom(driver, max_loads=3):
+    """Navigates to Upwork, triggers smart scrolling, and extracts job card details from the DOM."""
+    jobs = []
+    wait = WebDriverWait(driver, 15)
+
+    logging.info(f"Navigating to Upwork URL: {config.URL}...")
+    driver.get(config.URL)
+    time.sleep(3)  # Allow time for Cloudflare Turnstile & JS hydration
+
+    smart_scroll_and_load(driver, max_loads=max_loads)
+
+    logging.info("Extracting job details from DOM...")
+    try:
+        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "section[data-ev-feed_name='Most Recent']")))
+    except Exception as e:
+        logging.warning(f"Could not find Most Recent feed section: {e}")
+        return jobs
+
+    job_cards = driver.find_elements(By.CSS_SELECTOR, "section[data-ev-feed_name='Most Recent']")
+    for card in job_cards:
+        try:
+            # Extract Title & Link
+            title_elem = card.find_element(By.CSS_SELECTOR, "h3.job-tile-title a, h2.job-tile-title a")
+            job_title = title_elem.text.strip()
+            job_link = title_elem.get_attribute("href")
+
+            # Extract Description
+            try:
+                job_description = card.find_element(
+                    By.CSS_SELECTOR, "span[data-test='job-description-text'], div.job-description"
+                ).text.strip()
+            except Exception:
+                job_description = ""
+
+            # Extract Posted On Timestamp
+            try:
+                job_posted_on = card.find_element(By.CSS_SELECTOR, "span[data-test='posted-on']").text.strip()
+            except Exception:
+                job_posted_on = ""
+
+            # Extract Proposals
+            try:
+                job_proposals = card.find_element(By.CSS_SELECTOR, "span[data-test='proposals-tier']").text.strip()
+            except Exception:
+                job_proposals = ""
+
+            # Extract Budget / Hourly Rate
+            job_budget = "N/A"
+            try:
+                job_budget = card.find_element(By.CSS_SELECTOR, "span[data-test='budget']").text.strip()
+            except Exception:
+                try:
+                    job_budget = card.find_element(By.CSS_SELECTOR, "strong[data-test='job-type']").text.strip()
+                except Exception:
+                    pass
+            
+            try:
+                skills_elements = card.find_elements(By.CSS_SELECTOR, "ul.air3-token-wrap li, button.air3-token")
+                job_skills = ", ".join([elem.text.strip() for elem in skills_elements if elem.text.strip()])
+            except Exception:
+                job_skills = ""
+            
+            jobs.append({
+                "job_title": job_title,
+                "job_link": job_link,
+                "job_description": job_description,
+                "job_budget": job_budget,
+                "job_posted_on": job_posted_on,
+                "job_proposals": job_proposals,
+                "job_skills": job_skills,  # Standard DOM scraping yields empty skills string or requires extra parsing
+            })
+        except Exception as e:
+            logging.debug(f"Skipping empty or malformed card: {e}")
+            continue
+
+    logging.info(f"Successfully fetched {len(jobs)} jobs via DOM live scroll!")
+    return jobs
+
 
 def fetch_time_window_chunk(
     from_time_ms,
@@ -53,7 +132,7 @@ def fetch_time_window_chunk(
     chunk_label,
     max_pages=None,
 ):
-    """Paginates through a specific isolated time window (e.g., a single month)."""
+    """Paginates through a specific isolated time window via GraphQL API."""
     chunk_jobs = []
     current_to_time = to_time_ms
     page_count = 1
@@ -79,9 +158,7 @@ def fetch_time_window_chunk(
                 break
 
             if current_to_time <= from_time_ms:
-                logging.info(
-                    f"[{chunk_label}] Completed window back to start date."
-                )
+                logging.info(f"[{chunk_label}] Completed window back to start date.")
                 break
 
             payload = {
@@ -106,16 +183,11 @@ def fetch_time_window_chunk(
                 )
 
                 if response.status_code != 200:
-                    logging.error(
-                        f"[{chunk_label}] HTTP Error {response.status_code}"
-                    )
+                    logging.error(f"[{chunk_label}] HTTP Error {response.status_code}")
                     break
 
                 res_json = response.json()
-                feed_data = (
-                    res_json.get("data", {})
-                    .get("mostRecentRecommendationsFeed", {})
-                )
+                feed_data = res_json.get("data", {}).get("mostRecentRecommendationsFeed", {})
                 results = feed_data.get("results", [])
                 paging = feed_data.get("paging", {})
 
@@ -125,11 +197,8 @@ def fetch_time_window_chunk(
                 for job in results:
                     chunk_jobs.append(process_single_job(job))
 
-                logging.info(
-                    f"[{chunk_label}] Page {page_count}: +{len(results)} jobs (Subtotal: {len(chunk_jobs)})"
-                )
+                logging.info(f"[{chunk_label}] Page {page_count}: +{len(results)} jobs (Subtotal: {len(chunk_jobs)})")
 
-                # Get oldest timestamp in current batch
                 raw_next_time = (
                     paging.get("resultSetTs")
                     or paging.get("minTime")
@@ -149,7 +218,7 @@ def fetch_time_window_chunk(
 
                 current_to_time = next_time
                 page_count += 1
-                time.sleep(0.3)  # Fast delay between inner requests
+                time.sleep(0.3)
 
             except Exception as e:
                 logging.error(f"[{chunk_label}] Error during pagination: {e}")
@@ -161,10 +230,14 @@ def fetch_time_window_chunk(
 def fetch_job_multithreaded(
     driver, max_pages=None, max_workers=8, mode="live"
 ):
-    """- mode='live': Fetches recent 1 page immediately.
-
-    - mode='backfill': Generates contiguous chunks covering 01/01/2026 -> TODAY (29/07/2026) and fetches all in parallel.
     """
+    - mode='live': Uses Selenium Smart Scroll to pull live feed jobs straight from the DOM.
+    - mode='backfill': Generates contiguous chunks covering 01/01/2026 -> NOW and fetches all in parallel via GraphQL.
+    """
+    if mode == "live":
+        return fetch_job_dom(driver, max_loads=max_pages or 3)
+
+    # --- BACKFILL MODE ---
     logging.info(f"Navigating to Upwork URL: {config.URL}...")
     driver.get(config.URL)
     time.sleep(3)
@@ -180,35 +253,15 @@ def fetch_job_multithreaded(
         "User-Agent": driver.execute_script("return navigator.userAgent;"),
     }
 
-    # Live Mode: Pull top 1 page right now
-    if mode == "live":
-        from_time_ms = int(
-            datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc).timestamp()
-            * 1000
-        )
-        to_time_ms = int(time.time() * 1000)
-        return fetch_time_window_chunk(
-            from_time_ms,
-            to_time_ms,
-            headers,
-            selenium_cookies,
-            "LIVE_FEED",
-            max_pages=max_pages or 1,
-        )
-
-    # --- BACKFILL MODE: Full Range (Jan 1, 2026 to NOW) ---
     start_date = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
     now_date = datetime.now(timezone.utc)
 
-    # Chunk size in days (15 days ensures high speed & bypasses API depth caps)
     chunk_days = 15
     window_slices = []
     curr_start = start_date
 
-    # Build seamless contiguous windows covering Jan 1, 2026 all the way to NOW
     while curr_start < now_date:
         curr_end = min(curr_start + timedelta(days=chunk_days), now_date)
-
         f_ms = int(curr_start.timestamp() * 1000)
         t_ms = int(curr_end.timestamp() * 1000)
         label = f"{curr_start.strftime('%d/%m')}->{curr_end.strftime('%d/%m')}"
@@ -243,7 +296,5 @@ def fetch_job_multithreaded(
             except Exception as e:
                 logging.error(f"Thread execution failed: {e}")
 
-    logging.info(
-        f"=== FULL BACKFILL COMPLETE: Retrieved ALL {len(all_jobs)} jobs from Jan 1 to NOW! ==="
-    )
+    logging.info(f"=== FULL BACKFILL COMPLETE: Retrieved ALL {len(all_jobs)} jobs! ===")
     return all_jobs

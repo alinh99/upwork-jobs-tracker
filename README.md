@@ -3,9 +3,10 @@
 [![Python Version](https://img.shields.io/badge/python-3.10%20%7C%203.11-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Selenium](https://img.shields.io/badge/scraping-undetected--chromedriver-green)](https://github.com/ultrafunkamsterdam/undetected-chromedriver)
+[![curl-cffi](https://img.shields.io/badge/http-curl--cffi-orange)](https://github.com/yifeikong/curl_cffi)
 [![Google Sheets](https://img.shields.io/badge/integration-Google%20Sheets-success)](https://developers.google.com/sheets/api)
 
-An automated Python tracking pipeline that monitors Upwork's most recent jobs using **Undetected Chromedriver**, syncs unseen leads directly to **Google Sheets**, and dispatches parallel mobile/desktop push notifications via **ntfy**.
+An enterprise-grade hybrid tracking pipeline for Upwork jobs. It combines **Undetected Chromedriver** for browser authentication and live DOM scraping with **`curl_cffi`** for high-performance multithreaded GraphQL requests. Newly discovered jobs are synchronized with **Google Sheets** and delivered instantly through **ntfy** push notifications.
 
 ---
 
@@ -15,80 +16,127 @@ An automated Python tracking pipeline that monitors Upwork's most recent jobs us
 - [Key Features](#-key-features)
 - [Prerequisites](#-prerequisites)
 - [Installation & Setup](#-installation--setup)
-  - [1. Chrome Remote Debugging Setup](#1-chrome-remote-debugging-setup)
-  - [2. Google Sheets API Credentials](#2-google-sheets-api-credentials)
-  - [3. Python Environment Setup](#3-python-environment-setup)
+  - [1. Chrome Remote Debugging](#1-chrome-remote-debugging)
+  - [2. Google Sheets Credentials](#2-google-sheets-credentials)
+  - [3. Python Environment](#3-python-environment)
 - [Usage](#-usage)
+  - [Live Monitoring Mode](#live-monitoring-mode)
+  - [Historical Backfill Mode](#historical-backfill-mode)
 - [How It Works](#-how-it-works)
-- [File Structure](#-file-structure)
+- [Project Structure](#-project-structure)
 - [License](#-license)
 
 ---
 
 # 🚀 Overview
 
-This automation script attaches to a dedicated, pre-authenticated Google Chrome profile running on port `9222`. It periodically parses the **Most Recent** Upwork feed, deduplicates job links against historical Google Sheet records, appends new leads in bulk, and sends instant push notifications using `ntfy.sh`.
+This project provides a dual-mode scraping engine for collecting Upwork jobs efficiently.
+
+### Live Monitoring Mode
+
+- Connects to an authenticated Chrome instance through Remote Debugging.
+- Scrolls the job feed automatically.
+- Detects and clicks **Load More** buttons.
+- Extracts newly posted jobs.
+- Removes duplicates using Google Sheets.
+- Sends instant notifications through **ntfy**.
+
+### Historical Backfill Mode
+
+- Captures authenticated session cookies and headers from Chrome.
+- Uses Upwork's GraphQL API through **curl_cffi**.
+- Downloads historical jobs in parallel using multiple worker threads.
+- Imports historical data directly into Google Sheets without sending notifications.
 
 ---
 
 # ✨ Key Features
 
-- 🛡️ **Cloudflare & Anti-Bot Bypass**
-  - Uses `undetected-chromedriver` with a dedicated Chrome debugging profile.
-  - Preserves authenticated Upwork sessions.
-  - Handles Cloudflare and dynamic page hydration.
+## 🛡️ Hybrid Authentication
 
-- 📜 **Smart Scroll & Lazy Loading**
-  - Automatically scrolls through the feed.
-  - Detects and clicks **Load More** buttons.
-  - Uses multiple CSS/XPath fallback selectors for reliability.
+- Uses **undetected-chromedriver** attached to a Chrome Remote Debugging session.
+- Bypasses Cloudflare protection.
+- Automatically extracts authentication cookies and OAuth headers.
 
-- 📊 **Google Sheets Synchronization**
-  - Reads existing job URLs from **Column F**.
-  - Prevents duplicate entries.
-  - Performs efficient bulk inserts for new jobs.
+---
 
-- ⚡ **Concurrent Push Notifications**
-  - Uses `ThreadPoolExecutor`.
-  - Sends instant `ntfy` notifications containing:
-    - Job title
-    - Direct Upwork URL
-    - Google Sheet link
+## 📜 Smart DOM Scrolling Engine
 
-- ⚡ **Resource Optimized**
-  - Disables image rendering.
-  - Blocks external fonts.
-  - Reduces memory consumption for long-running execution.
+- Incremental scrolling for lazy-loaded content.
+- Automatically detects **Load More** buttons.
+- Multiple XPath/CSS selector fallbacks.
+- Optimized for long-running monitoring.
+
+---
+
+## ⚡ Parallel GraphQL Backfill
+
+- Uses **curl_cffi** with Chrome browser impersonation.
+- Splits date ranges into configurable chunks.
+- Executes concurrent GraphQL requests using `ThreadPoolExecutor`.
+- Significantly faster than browser-only scraping.
+
+---
+
+## 📊 Google Sheets Integration
+
+- Reads existing job URLs into memory.
+- Prevents duplicate inserts.
+- Bulk appends newly discovered jobs.
+- Stores a continuously growing dataset.
+
+---
+
+## 🔔 Instant Notifications
+
+- Sends asynchronous push notifications through **ntfy**.
+- Only alerts for newly discovered jobs.
+- Prevents duplicate alerts.
 
 ---
 
 # ⚙️ Prerequisites
 
-- **Operating System:** Windows
-- **Google Chrome:** Installed at
+## Operating System
+
+- Windows
+
+## Google Chrome
+
+Install Chrome at:
 
 ```text
 C:\Program Files\Google\Chrome\Application\chrome.exe
 ```
 
-- **Python:** 3.10+
-- **Chrome User Profile:**
+## Python
+
+- Python 3.10+
+- Python 3.11
+
+## Chrome Profile
 
 ```text
 D:\selenium\UpworkProfile
 ```
 
-- **Google Service Account**
-  - A valid `service_account.json`
-  - Shared with your Google Sheet using **Editor** permission
+## Google Service Account
+
+Place the following file in the project root:
+
+```text
+service_account.json
+```
+
+Grant the service account **Editor** permission on your target Google Sheet.
 
 ---
 
-# ⚡ Installation & Setup
+# ⚙️ Installation & Setup
 
-## 1. Chrome Remote Debugging Setup
+## 1. Chrome Remote Debugging
 
-Launch Chrome using your dedicated Upwork profile before running the scraper.
+Launch Chrome before starting the application:
 
 ```powershell
 & "C:\Program Files\Google\Chrome\Application\chrome.exe" `
@@ -96,132 +144,141 @@ Launch Chrome using your dedicated Upwork profile before running the scraper.
   --user-data-dir="D:\selenium\UpworkProfile"
 ```
 
-> **Note**
+> **Important**
 >
-> Log into your Upwork account in this Chrome instance before starting the automation pipeline.
+> Log into your Upwork account using this Chrome instance before running the application.
 
 ---
 
-## 2. Google Sheets API Credentials
+## 2. Google Sheets Credentials
 
-1. Create a Google Sheet named **Upwork Jobs Tracker**.
-2. Enable the **Google Sheets API** in Google Cloud Console.
-3. Download your Service Account credentials.
-4. Save the file as:
+1. Create a Google Sheet.
+2. Name it **Upwork Jobs Tracker**.
+3. Download your Google Cloud Service Account key.
+4. Save it as:
 
 ```text
 service_account.json
 ```
 
-5. Share your Google Sheet with the `client_email` contained in `service_account.json` and grant **Editor** access.
+5. Share the spreadsheet with the service account email using **Editor** permission.
 
 ---
 
-## 3. Python Environment Setup
+## 3. Python Environment
 
-Clone the repository and install the required dependencies.
+Install all dependencies:
 
 ```bash
-pip install \
-    undetected-chromedriver \
-    gspread \
-    psutil \
-    requests \
-    python-dotenv \
-    selenium
+pip install -r requirements.txt
 ```
 
 ---
 
 # 💡 Usage
 
-Run the pipeline:
+## Live Monitoring Mode
+
+Runs continuously, scrapes newly posted jobs, updates Google Sheets, and sends push notifications.
 
 ```bash
-python main.py
+python main.py --mode live --pages 3 --interval 3600
 ```
 
-The application starts an automated monitoring loop that:
+---
 
-- Connects to the Chrome debugging session
-- Scrapes newly posted Upwork jobs
-- Syncs new jobs into Google Sheets
-- Sends push notifications
-- Sleeps for **3600 seconds** before repeating
+## Historical Backfill Mode
 
-Each iteration logs:
+Downloads historical jobs from **January 1, 2026** to the present.
 
-- Execution time
-- Memory usage
-- Number of new jobs discovered
-- Notification status
+```bash
+python main.py --mode backfill
+```
+
+Notifications are disabled during backfill.
+
+---
+
+## Command Line Arguments
+
+| Argument | Type | Default | Description |
+|----------|------|---------|-------------|
+| `--mode` | string | `live` | Operating mode: `live` or `backfill` |
+| `--pages` | int | `1` | Maximum pages/load-more operations per live cycle |
+| `--interval` | int | `3600` | Delay between live monitoring cycles (seconds) |
 
 ---
 
 # 🛠 How It Works
 
 ```text
-+----------------------------+
-| Chrome DevTools (Port 9222)|
-+-------------+--------------+
-              |
-              v
-+----------------------------+
-| Navigate to Most Recent    |
-| Upwork Feed                |
-+-------------+--------------+
-              |
-              v
-+----------------------------+
-| Smart Scroll Pipeline      |
-| Infinite Scroll            |
-| Load More Detection        |
-+-------------+--------------+
-              |
-              v
-+----------------------------+
-| Extract Job Cards          |
-+-------------+--------------+
-              |
-              v
-+----------------------------+
-| Google Sheets Sync         |
-| Read Existing URLs         |
-| Remove Duplicates          |
-+-------------+--------------+
-              |
-      +-------+--------+
-      |                |
-      v                v
-+-------------+   +----------------+
-| Bulk Insert |   | ntfy Push      |
-| Google Sheet|   | Notifications  |
-+-------------+   +----------------+
+                     +-----------------------------+
+                     | Chrome DevTools (Port 9222) |
+                     +--------------+--------------+
+                                    |
+                         Extract Driver & Auth
+                                    |
+              +---------------------+---------------------+
+              |                                           |
+              |                                           |
+              v                                           v
+        +-------------+                           +----------------+
+        | LIVE MODE   |                           | BACKFILL MODE  |
+        +-------------+                           +----------------+
+              |                                           |
+      Smart DOM Scroll                           Split Date Ranges
+      Load More Buttons                          (Jan 1, 2026 → Now)
+              |                                           |
+        Extract Job Cards                      ThreadPoolExecutor
+              |                               curl_cffi GraphQL
+              +---------------------+---------------------+
+                                    |
+                                    v
+                      +-------------------------------+
+                      | Google Sheets Synchronization |
+                      +---------------+---------------+
+                                      |
+                      +---------------+---------------+
+                      |                               |
+                      v                               v
+               Append New Jobs              Send ntfy Notifications
+                (Google Sheets)              (Live Mode Only)
 ```
 
 ---
 
-# 📁 File Structure
+# 📁 Project Structure
 
 ```text
 .
-├── main.py
-├── service_account.json
+├── __pycache__/
 ├── .env
-├── Upwork.log
-└── README.md
+├── .env.example
+├── .gitignore
+├── config.py
+├── driver.py
+├── main.py
+├── notifications.py
+├── README.md
+├── requirements.txt
+├── scraper.py
+├── service_account.json
+├── sheets.py
 ```
+
+## Module Overview
 
 | File | Description |
 |------|-------------|
-| `main.py` | Core scraping pipeline, Google Sheets synchronization, and notification loop |
-| `service_account.json` | Google Cloud Service Account credentials |
-| `.env` | Environment variables |
-| `Upwork.log` | Runtime logs and execution metrics |
-| `README.md` | Project documentation |
+| `main.py` | Application entry point and pipeline orchestration |
+| `driver.py` | Chrome initialization and authentication extraction |
+| `scraper.py` | Live DOM scraper and GraphQL backfill engine |
+| `sheets.py` | Google Sheets wrapper and deduplication |
+| `notifications.py` | ntfy notification handler |
+| `config.py` | Configuration, CLI arguments, logging |
 
 ---
 
 # 📄 License
 
-This project is distributed under the **MIT License**.
+This project is licensed under the **MIT License**.
