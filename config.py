@@ -2,6 +2,7 @@ import argparse
 import logging
 import os
 import psutil
+from datetime import datetime, timezone
 
 # Configuration Constants
 URL = "https://www.upwork.com/nx/find-work/most-recent"
@@ -79,3 +80,40 @@ def get_current_memory_usage_mb() -> float:
     """Returns process RAM usage in Megabytes."""
     process = psutil.Process(os.getpid())
     return process.memory_info().rss / (1024**2)
+
+def format_upwork_time(iso_str: str) -> str:
+    # 1. Parse the ISO timestamp string from the Upwork API
+    created_at = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+    
+    # 2. Get the current time in UTC
+    now = datetime.now(timezone.utc)
+    
+    # 3. Calculate the difference between current time and job posted time in seconds
+    diff_seconds = int((now - created_at).total_seconds())
+
+    # Less than 1 second (or slight clock skew) -> Just now
+    if diff_seconds < 1:
+        return "Just now"
+    
+    # Under 60 seconds -> Format in seconds
+    elif diff_seconds < 60:
+        return f"{diff_seconds}s ago"
+    
+    # Under 1 hour -> Format in minutes (1m to 59m)
+    elif diff_seconds < 3600:
+        minutes = diff_seconds // 60
+        return f"{minutes}m ago"
+    
+    # Under 24 hours -> Format in hours (1h to 23h)
+    elif diff_seconds < 86400:
+        hours = diff_seconds // 3600
+        return f"{hours}h ago"
+    
+    # Under 7 days -> Format in days (1d to 6d)
+    elif diff_seconds < 604800:
+        days = diff_seconds // 86400
+        return f"{days}d ago"
+    
+    # Older than 1 week (>= 7 days) -> Format as Month Day, Year
+    else:
+        return created_at.strftime("%b %d, %Y")

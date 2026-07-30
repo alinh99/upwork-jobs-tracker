@@ -40,7 +40,7 @@ def process_single_job(job):
         "job_link": job_link,
         "job_description": job.get("description", ""),
         "job_budget": budget_str,
-        "job_posted_on": job.get("createdOn", "N/A"),
+        "job_posted_on": config.format_upwork_time(job.get("createdOn", "N/A")),
         "job_proposals": job.get("proposalsTier", "N/A"),
         "job_skills": skills_str,
     }
