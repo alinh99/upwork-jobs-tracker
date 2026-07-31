@@ -33,7 +33,9 @@ def process_single_job(job):
     elif hourly_obj.get("min") or hourly_obj.get("max"):
         budget_str = f"${hourly_obj.get('min', 0)}-${hourly_obj.get('max', 0)}/hr"
     else:
-        budget_str = job.get("tierText", "N/A")
+        budget_str = "Negotiate"
+    
+    job_level = job.get("tierText", "N/A")
 
     return {
         "job_title": job.get("title", "N/A"),
@@ -43,6 +45,7 @@ def process_single_job(job):
         "job_posted_on": config.format_upwork_time(job.get("createdOn", "N/A")),
         "job_proposals": job.get("proposalsTier", "N/A"),
         "job_skills": skills_str,
+        "job_level": job_level
     }
 
 def fetch_job_dom(driver, max_loads=3):
@@ -101,11 +104,18 @@ def fetch_job_dom(driver, max_loads=3):
                 except Exception:
                     pass
             
+            # Extract Skills
             try:
                 skills_elements = card.find_elements(By.CSS_SELECTOR, "ul.air3-token-wrap li, button.air3-token")
                 job_skills = ", ".join([elem.text.strip() for elem in skills_elements if elem.text.strip()])
             except Exception:
                 job_skills = ""
+            
+            # Extract Job Level
+            try:
+                job_level = card.find_element(By.CSS_SELECTOR, "span[data-test='contractor-tier']").text.strip()
+            except Exception:
+                job_level = "N/A"
             
             jobs.append({
                 "job_title": job_title,
@@ -115,6 +125,7 @@ def fetch_job_dom(driver, max_loads=3):
                 "job_posted_on": job_posted_on,
                 "job_proposals": job_proposals,
                 "job_skills": job_skills,  # Standard DOM scraping yields empty skills string or requires extra parsing
+                "job_level": job_level
             })
         except Exception as e:
             logging.debug(f"Skipping empty or malformed card: {e}")
@@ -253,10 +264,10 @@ def fetch_job_multithreaded(
         "User-Agent": driver.execute_script("return navigator.userAgent;"),
     }
 
-    start_date = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+    start_date = datetime(2025, 12, 1, 0, 0, 0, tzinfo=timezone.utc)
     now_date = datetime.now(timezone.utc)
 
-    chunk_days = 15
+    chunk_days = 5
     window_slices = []
     curr_start = start_date
 

@@ -12,7 +12,7 @@ NTFY_TOPIC = "upwork_job"  # Unique ntfy topic name
 RUN_INTERVAL_SECONDS = 1800  # Default: 30 mins
 SPREADSHEET_NAME = "Upwork Jobs Tracker"
 SERVICE_ACCOUNT_FILE = "service_account.json"
-LIMITED_PER_PAGE = 50
+LIMITED_PER_PAGE = 10
 
 # In-memory set to track seen job links during the session
 SEEN_JOBS = set()
@@ -22,6 +22,7 @@ SHEET_HEADERS = [
     "Posted On",
     "Title",
     "Skills",
+    "Level",
     "Budget",
     "Proposals",
     "Description",
@@ -58,7 +59,7 @@ def parse_args():
         "--mode",
         type=str,
         choices=["backfill", "live"],
-        default="live",
+        default="backfill",
         help="'backfill' fetches all jobs from Jan 1 2026 without ntfy alerts. 'live' runs periodic loop for fresh jobs.",
     )
     parser.add_argument(

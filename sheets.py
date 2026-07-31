@@ -27,11 +27,11 @@ def init_google_sheet():
 
 
 def get_existing_links_from_sheet(worksheet) -> set:
-    """Reads Column G (Column 7) to get all previously saved job URLs."""
+    """Reads Column H (Column 8) to get all previously saved job URLs."""
     if not worksheet:
         return set()
     try:
-        links = worksheet.col_values(7)
+        links = worksheet.col_values(8)
         return set(links[1:])  # Skip header
     except Exception as e:
         logging.error(f"Error fetching existing links from Sheet: {e}")
@@ -49,6 +49,7 @@ def save_jobs_to_sheets(worksheet, new_jobs: list):
             job.get("job_posted_on", "N/A"),
             job.get("job_title", "N/A"),
             job.get("job_skills", "N/A"),
+            job.get("job_level", "N/A"),
             job.get("job_budget", "N/A"),
             job.get("job_proposals", "N/A"),
             job.get("job_description", ""),
