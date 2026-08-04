@@ -189,11 +189,17 @@ python main.py --mode live --pages 3 --interval 3600
 
 ## Historical Backfill Mode
 
-Downloads historical jobs from **January 1, 2026** to the present.
-
-```bash
+# Default backfill (Jan 1, 2026 to present, 5-day chunks, 8 worker threads)
 python main.py --mode backfill
-```
+
+# Custom date range with smaller chunks for high-density job windows
+python main.py --mode backfill --from-date 2026-03-01 --to-date 2026-06-01 --chunk-days 2
+
+# Low-concurrency mode (optimized for 1 vCPU / small VPS / n8n environment)
+python main.py --mode backfill --workers 2 --chunk-days 7
+
+# High-speed burst backfill on a powerful machine
+python main.py --mode backfill --workers 16 --chunk-days 1
 
 Notifications are disabled during backfill.
 
@@ -204,8 +210,12 @@ Notifications are disabled during backfill.
 | Argument | Type | Default | Description |
 |----------|------|---------|-------------|
 | `--mode` | string | `live` | Operating mode: `live` or `backfill` |
-| `--pages` | int | `1` | Maximum pages/load-more operations per live cycle |
-| `--interval` | int | `3600` | Delay between live monitoring cycles (seconds) |
+| `--pages` | int | `None` | Maximum pages / load-more operations per cycle/chunk |
+| `--interval` | int | `1800` | Delay between live monitoring cycles in seconds (Default: 30 min) |
+| `--from-date` | string | `2026-01-01` | Backfill start date in `YYYY-MM-DD` format |
+| `--to-date` | string | `None` | Backfill end date in `YYYY-MM-DD` format (Default: Today / Now) |
+| `--chunk-days` | int | `5` | Time window size in days per backfill chunk thread |
+| `--workers` | int | `8` | Maximum parallel worker threads for GraphQL backfill fetching |
 
 ---
 
