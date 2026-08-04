@@ -24,7 +24,7 @@ if __name__ == "__main__":
             all_jobs = fetch_job_multithreaded(
                 driver, max_pages=args.pages, mode="backfill",
                 from_date_str=args.from_date, to_date_str=args.to_date,
-                chunk_days=args.chunk_days, max_workers=args.max_workers
+                chunk_days=args.chunk_days, max_workers=args.workers
             )
             new_jobs = [
                 j
@@ -60,7 +60,7 @@ if __name__ == "__main__":
                     all_jobs = fetch_job_multithreaded(
                         driver, max_pages=max_p, mode="live", 
                         from_date_str=args.from_date, to_date_str=args.to_date,
-                        chunk_days=args.chunk_days, max_workers=args.max_workers
+                        chunk_days=args.chunk_days, max_workers=args.workers
                     )
 
                     new_jobs = [
