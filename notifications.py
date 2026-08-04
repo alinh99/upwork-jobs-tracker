@@ -9,7 +9,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 
 
 def encode_rfc2047(text: str) -> str:
-    """Mã hóa chuỗi UTF-8 sang định dạng RFC 2047 Base64 an toàn cho HTTP Headers."""
+    """Encode UTF-8 to RFC 2047 Base64 format safely for HTTP Headers."""
     encoded_bytes = base64.b64encode(text.encode("utf-8")).decode("ascii")
     return f"=?utf-8?B?{encoded_bytes}?="
 
@@ -35,17 +35,17 @@ def send_single_job_notification(args):
         f"📊 Google Sheet: {config.SPREADSHEET_URL}"
     )
 
-    # 1. Mã hóa Title bằng RFC 2047 để hiển thị đúng Tiếng Việt / Emoji trên ntfy
+    # 1. Encode Title using RFC 2047 for proper display of Vietnamese / Emoji on ntfy
     raw_title = f"#{index} {title}"
     encoded_title = encode_rfc2047(raw_title)
 
     try:
-        # 2. Truyền data dạng UTF-8 bytes, tất cả headers đều là str thuần
+        # 2. Pass data as UTF-8 bytes, all headers are plain strings
         requests.post(
             f"https://ntfy.sh/{config.NTFY_TOPIC}",
             data=message.encode("utf-8"),
             headers={
-                "Title": encoded_title,  # Chuỗi str RFC 2047 đã mã hóa
+                "Title": encoded_title,  # Encoded RFC 2047 string
                 "Priority": "high",
                 "Tags": "briefcase,fire,clock1",
                 "Click": link,
