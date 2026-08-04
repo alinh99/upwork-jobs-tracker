@@ -239,12 +239,14 @@ def fetch_time_window_chunk(
 
 
 def fetch_job_multithreaded(
-    driver, max_pages=None, max_workers=8, mode="live"
+    driver,
+    max_pages=None,
+    max_workers=8,
+    mode="live",
+    from_date_str="2026-01-01",
+    to_date_str=None,
+    chunk_days=5,
 ):
-    """
-    - mode='live': Uses Selenium Smart Scroll to pull live feed jobs straight from the DOM.
-    - mode='backfill': Generates contiguous chunks covering 01/01/2026 -> NOW and fetches all in parallel via GraphQL.
-    """
     if mode == "live":
         return fetch_job_dom(driver, max_loads=max_pages or 3)
 
@@ -264,10 +266,25 @@ def fetch_job_multithreaded(
         "User-Agent": driver.execute_script("return navigator.userAgent;"),
     }
 
-    start_date = datetime(2025, 12, 1, 0, 0, 0, tzinfo=timezone.utc)
-    now_date = datetime.now(timezone.utc)
+    # Parse dynamic dates
+    try:
+        start_date = datetime.strptime(from_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError:
+        logging.warning("Invalid --from-date format. Falling back to 2026-01-01.")
+        start_date = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
-    chunk_days = 5
+    if to_date_str:
+        try:
+            now_date = datetime.strptime(to_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except ValueError:
+            now_date = datetime.now(timezone.utc)
+    else:
+        now_date = datetime.now(timezone.utc)
+
+    # Enforce safe bounds
+    chunk_days = max(1, chunk_days)
+    max_workers = max(1, max_workers)
+
     window_slices = []
     curr_start = start_date
 
@@ -281,7 +298,8 @@ def fetch_job_multithreaded(
         curr_start = curr_end
 
     logging.info(
-        f"=== Starting FULL BACKFILL from 01/01/2026 to {now_date.strftime('%d/%m/%Y')} across {len(window_slices)} parallel threads ==="
+        f"=== Starting BACKFILL from {start_date.strftime('%d/%m/%Y')} to {now_date.strftime('%d/%m/%Y')} "
+        f"({chunk_days}-day chunks) using {max_workers} worker threads across {len(window_slices)} total slices ==="
     )
 
     all_jobs = []
@@ -307,5 +325,5 @@ def fetch_job_multithreaded(
             except Exception as e:
                 logging.error(f"Thread execution failed: {e}")
 
-    logging.info(f"=== FULL BACKFILL COMPLETE: Retrieved ALL {len(all_jobs)} jobs! ===")
+    logging.info(f"=== BACKFILL COMPLETE: Retrieved {len(all_jobs)} jobs! ===")
     return all_jobs

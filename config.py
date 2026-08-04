@@ -74,6 +74,30 @@ def parse_args():
         default=RUN_INTERVAL_SECONDS,
         help="Sleep interval in seconds between cycles for live mode (Default: 1800s).",
     )
+    parser.add_argument(
+        "--from-date",
+        type=str,
+        default="2026-01-01",
+        help="Backfill start date in YYYY-MM-DD format (Default: 2026-01-01).",
+    )
+    parser.add_argument(
+        "--to-date",
+        type=str,
+        default=None,
+        help="Backfill end date in YYYY-MM-DD format (Default: Today/Now).",
+    )
+    parser.add_argument(
+        "--chunk-days",
+        type=int,
+        default=5,
+        help="Time window size in days per backfill chunk thread (Default: 5).",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=5,
+        help="Maximum parallel worker threads for backfill chunk fetching (Default: 5).",
+    )
     return parser.parse_args()
 
 
